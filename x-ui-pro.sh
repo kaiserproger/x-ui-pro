@@ -10,6 +10,7 @@ msg_inf		 ' \/ __ | |  | __ |_) |_) / \ '	;
 msg_inf		 ' /\    |_| _|_   |   | \ \_/ '	; echo
 ##################################Variables#############################################################
 XUIDB="/etc/x-ui/x-ui.db";domain="";UNINSTALL="x";INSTALL="n";PNLNUM=1;CFALLOW="n";CLASH=0;CUSTOMWEBSUB=0
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 Pak=$(type apt &>/dev/null && echo "apt" || echo "yum")
 systemctl stop x-ui
 rm -rf /etc/systemd/system/x-ui.service
@@ -79,7 +80,6 @@ while [ "$#" -gt 0 ]; do
     -install) INSTALL="$2"; shift 2;;
     -panel) PNLNUM="$2"; shift 2;;
     -subdomain) domain="$2"; shift 2;;
-    -reality_domain) reality_domain="$2"; shift 2;;
     -ONLY_CF_IP_ALLOW) CFALLOW="$2"; shift 2;;
     -websub) CUSTOMWEBSUB="$2"; shift 2;;
     -clash) CLASH="$2"; shift 2;;
@@ -114,9 +114,6 @@ IP4=$(ip route get 8.8.8.8 2>&1 | grep -Po -- 'src \K\S*')
 if [[ ${AUTODOMAIN} == *"y"* ]]; then
     # panel domain: x.x.x.x.cdn-one.org
     domain="${IP4}.cdn-one.org"
-
-    # reality domain: x-x-x-x.cdn-one.org
-    reality_domain="${IP4//./-}.cdn-one.org"
 fi
 
 
@@ -134,21 +131,6 @@ MainDomain=$(echo "$domain" 2>&1 | sed 's/.*\.\([^.]*\..*\)$/\1/')
 
 if [[ "${SubDomain}.${MainDomain}" != "${domain}" ]] ; then
 	MainDomain=${domain}
-fi
-
-while true; do	
-	if [[ -n "$reality_domain" ]]; then
-		break
-	fi
-	echo -en "Enter available subdomain for REALITY (sub.domain.tld): " && read reality_domain 
-done
-
-reality_domain=$(echo "$reality_domain" 2>&1 | tr -d '[:space:]' )
-RealitySubDomain=$(echo "$reality_domain" 2>&1 | sed 's/^[^ ]* \|\..*//g')
-RealityMainDomain=$(echo "$reality_domain" 2>&1 | sed 's/.*\.\([^.]*\..*\)$/\1/')
-
-if [[ "${RealitySubDomain}.${RealityMainDomain}" != "${reality_domain}" ]] ; then
-	RealityMainDomain=${reality_domain}
 fi
 
 ###############################Install Packages#########################################################
@@ -192,10 +174,6 @@ if [[ ${AUTODOMAIN} == *"y"* ]]; then
         msg_err "Auto-domain $domain does not resolve to this server IP ($IP4). Fix DNS/service and retry."
         exit 1
     fi
-    if ! resolve_to_ip "$reality_domain"; then
-        msg_err "Auto-domain $reality_domain does not resolve to this server IP ($IP4). Fix DNS/service and retry."
-        exit 1
-    fi
 fi
 
 
@@ -203,12 +181,6 @@ certbot certonly --standalone --non-interactive --agree-tos --register-unsafely-
 if [[ ! -d "/etc/letsencrypt/live/${domain}/" ]]; then
  	systemctl start nginx >/dev/null 2>&1
 	msg_err "$domain SSL could not be generated! Check Domain/IP Or Enter new domain!" && exit 1
-fi
-
-certbot certonly --standalone --non-interactive --agree-tos --register-unsafely-without-email -d "$reality_domain"
-if [[ ! -d "/etc/letsencrypt/live/${reality_domain}/" ]]; then
- 	systemctl start nginx >/dev/null 2>&1
-	msg_err "$reality_domain SSL could not be generated! Check Domain/IP Or Enter new domain!" && exit 1
 fi
 ################################# Access to configs only with cloudflare#################################
 
@@ -237,13 +209,8 @@ mkdir -p /etc/nginx/stream-enabled
 cat > "/etc/nginx/stream-enabled/stream.conf" << EOF
 map \$ssl_preread_server_name \$sni_name {
     hostnames;
-    ${reality_domain}      xray;
     ${domain}           www;
-    default              xray;
-}
-
-upstream xray {
-    server 127.0.0.1:8443;
+    default              www;
 }
 
 upstream www {
@@ -268,7 +235,7 @@ sed -i "/worker_connections/c\worker_connections 4096;" /etc/nginx/nginx.conf
 cat > "/etc/nginx/sites-available/80.conf" << EOF
 server {
     listen 80;
-    server_name ${domain} ${reality_domain};
+    server_name ${domain};
     return 301 https://\$host\$request_uri;
 }
 EOF
@@ -462,51 +429,11 @@ cat > "/etc/nginx/snippets/includes.conf" << EOF
 	location / { try_files \$uri \$uri/ =404; }
 EOF
 
-cat > "/etc/nginx/sites-available/${reality_domain}" << EOF
-server {
-	server_tokens off;
-	server_name ${reality_domain};
-	listen 9443 ssl http2;
-	listen [::]:9443 ssl http2;
-	index index.html index.htm index.php index.nginx-debian.html;
-	root /var/www/html/;
-	ssl_protocols TLSv1.2 TLSv1.3;
-	ssl_ciphers HIGH:!aNULL:!eNULL:!MD5:!DES:!RC4:!ADH:!SSLv3:!EXP:!PSK:!DSS;
-	ssl_certificate /etc/letsencrypt/live/$reality_domain/fullchain.pem;
-	ssl_certificate_key /etc/letsencrypt/live/$reality_domain/privkey.pem;
-	if (\$host !~* ^(.+\.)?${reality_domain}\$ ){return 444;}
-	if (\$scheme ~* https) {set \$safe 1;}
-	if (\$ssl_server_name !~* ^(.+\.)?${reality_domain}\$ ) {set \$safe "\${safe}0"; }
-	if (\$safe = 10){return 444;}
-	if (\$request_uri ~ "(\"|'|\`|~|,|:|--|;|%|\\$|&&|\?\?|0x00|0X00|\||\\|\{|\}|\[|\]|<|>|\.\.\.|\.\.\/|\/\/\/)"){set \$hack 1;}
-	error_page 400 401 402 403 500 501 502 503 504 =404 /404;
-	proxy_intercept_errors on;
-	#X-UI Admin Panel
-	location /${panel_path}/ {
-		proxy_redirect off;
-		proxy_set_header Host \$host;
-		proxy_set_header X-Real-IP \$remote_addr;
-		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-		proxy_pass http://127.0.0.1:${panel_port};
-		break;
-	}
-        location /$panel_path {
-		proxy_redirect off;
-		proxy_set_header Host \$host;
-		proxy_set_header X-Real-IP \$remote_addr;
-		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-		proxy_pass http://127.0.0.1:${panel_port};
-		break;
-	}
-include /etc/nginx/snippets/includes.conf;
-}
-EOF
 ##################################Check Nginx status####################################################
 if [[ -f "/etc/nginx/sites-available/${domain}" ]]; then
 	unlink "/etc/nginx/sites-enabled/default" >/dev/null 2>&1
 	rm -f "/etc/nginx/sites-enabled/default" "/etc/nginx/sites-available/default"
 	ln -s "/etc/nginx/sites-available/${domain}" "/etc/nginx/sites-enabled/" 2>/dev/null
-        ln -s "/etc/nginx/sites-available/${reality_domain}" "/etc/nginx/sites-enabled/" 2>/dev/null
 	ln -s "/etc/nginx/sites-available/80.conf" "/etc/nginx/sites-enabled/" 2>/dev/null
 else
 	msg_err "${domain} nginx config not exist!" && exit 1
@@ -522,19 +449,11 @@ fi
 ##############################generate uri's###########################################################
 sub_uri=https://${domain}/${sub_path}/
 json_uri=https://${domain}/${web_path}?name=
-##############################generate keys###########################################################
-shor=($(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8) $(openssl rand -hex 8))
 
 ########################################Update X-UI Port/Path for first INSTALL#########################
 UPDATE_XUIDB(){
 if [[ -f $XUIDB ]]; then
         x-ui stop
-        output=$(/usr/local/x-ui/bin/xray-linux-amd64 x25519)
-
-        private_key=$(echo "$output" | grep "^PrivateKey:" | awk '{print $2}')
-        public_key=$(echo "$output" | grep "^Password:" | awk '{print $2}')
-
-        client_id=$(/usr/local/x-ui/bin/xray-linux-amd64 uuid)
         client_id2=$(/usr/local/x-ui/bin/xray-linux-amd64 uuid)
         client_id3=$(/usr/local/x-ui/bin/xray-linux-amd64 uuid)
 	trojan_pass=$(gen_random_string 10)
@@ -578,101 +497,9 @@ if [[ -f $XUIDB ]]; then
 	     INSERT INTO "settings" ("key", "value") VALUES ("subJsonMux",  '');
              INSERT INTO "settings" ("key", "value") VALUES ("subJsonRules",  '');
 	     INSERT INTO "settings" ("key", "value") VALUES ("datepicker",  'gregorian');
-             INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('1','1','first','0','0','0','0','0');
-	     INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('2','1','first_1','0','0','0','0','0');
-		   INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('3','1','firstX','0','0','0','0','0');
-	     INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('4','1','firstT','0','0','0','0','0');
-             INSERT INTO "inbounds" ("user_id","up","down","total","remark","enable","expiry_time","listen","port","protocol","settings","stream_settings","tag","sniffing") VALUES ( 
-             '1',
-	     '0',
-             '0',
-	     '0',
-             '${emoji_flag} reality',
-	     '1',
-             '0',
-	     '',
-             '8443',
-	     'vless',
-             '{
-	     "clients": [
-    {
-      "id": "${client_id}",
-      "flow": "xtls-rprx-vision",
-      "email": "first",
-      "limitIp": 0,
-      "totalGB": 0,
-      "expiryTime": 0,
-      "enable": true,
-      "tgId": "",
-      "subId": "first",
-      "reset": 0,
-      "created_at": 1756726925000,
-      "updated_at": 1756726925000
-
-    }
-  ],
-  "decryption": "none",
-  "fallbacks": []
-}',
-	     '{
-  "network": "tcp",
-  "security": "reality",
-  "externalProxy": [
-    {
-      "forceTls": "same",
-      "dest": "${domain}",
-      "port": 443,
-      "remark": ""
-    }
-  ],
-  "realitySettings": {
-    "show": false,
-    "xver": 0,
-    "target": "127.0.0.1:9443",
-    "serverNames": [
-      "$reality_domain"
-    ],
-    "privateKey": "${private_key}",
-    "minClient": "",
-    "maxClient": "",
-    "maxTimediff": 0,
-    "shortIds": [
-      "${shor[0]}",
-      "${shor[1]}",
-      "${shor[2]}",
-      "${shor[3]}",
-      "${shor[4]}",
-      "${shor[5]}",
-      "${shor[6]}",
-      "${shor[7]}"
-    ],
-    "settings": {
-      "publicKey": "${public_key}",
-      "fingerprint": "random",
-      "serverName": "",
-      "spiderX": "/"
-    }
-  },
-  "tcpSettings": {
-    "acceptProxyProtocol": true,
-    "header": {
-      "type": "none"
-    }
-  }
-}',
-             'inbound-8443',
-	     '{
-  "enabled": false,
-  "destOverride": [
-    "http",
-    "tls",
-    "quic",
-    "fakedns"
-  ],
-  "metadataOnly": false,
-  "routeOnly": false
-}'
-	     );
+             INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('1','1','first_1','0','0','0','0','0');
+             INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('2','1','firstX','0','0','0','0','0');
+             INSERT INTO "client_traffics" ("inbound_id","enable","email","up","down","expiry_time","total","reset") VALUES ('3','1','firstT','0','0','0','0','0');
       INSERT INTO "inbounds" ("user_id","up","down","total","remark","enable","expiry_time","listen","port","protocol","settings","stream_settings","tag","sniffing") VALUES ( 
              '1',
 	     '0',
@@ -782,26 +609,27 @@ if [[ -f $XUIDB ]]; then
     "headers": {},
     "scMaxBufferedPosts": 30,
     "scMaxEachPostBytes": "1000000",
+    "scStreamUpServerSecs": "20-80",
     "noSSEHeader": false,
     "xPaddingBytes": "100-1000",
-    "mode": "packet-up"
+    "mode": "stream-up"
   },
   "sockopt": {
     "acceptProxyProtocol": false,
-    "tcpFastOpen": true,
+    "tcpFastOpen": false,
     "mark": 0,
     "tproxy": "off",
-    "tcpMptcp": true,
+    "tcpMptcp": false,
     "tcpNoDelay": true,
-    "domainStrategy": "UseIP",
-    "tcpMaxSeg": 1440,
+    "domainStrategy": "AsIs",
+    "tcpMaxSeg": 1380,
     "dialerProxy": "",
-    "tcpKeepAliveInterval": 0,
-    "tcpKeepAliveIdle": 300,
-    "tcpUserTimeout": 10000,
+    "tcpKeepAliveInterval": 20,
+    "tcpKeepAliveIdle": 120,
+    "tcpUserTimeout": 400,
     "tcpcongestion": "bbr",
     "V6Only": false,
-    "tcpWindowClamp": 600,
+    "tcpWindowClamp": 0,
     "interface": ""
   }
 }',
@@ -1064,7 +892,11 @@ su -c "/usr/bin/sub2sing-box server --bind 127.0.0.1 --port 8080 & disown" root
 
 ######################install_fake_site#################################################################
 
-sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/mozaroc/x-ui-pro/refs/heads/master/randomfakehtml.sh)"
+if [[ -f "${SCRIPT_DIR}/randomfakehtml.sh" ]]; then
+    bash "${SCRIPT_DIR}/randomfakehtml.sh"
+else
+    sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/mozaroc/x-ui-pro/refs/heads/master/randomfakehtml.sh)"
+fi
 
 ######################install_web_sub_page##############################################################
 
