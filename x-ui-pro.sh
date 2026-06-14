@@ -9,7 +9,7 @@ echo;msg_inf '           ___    _   _   _  '	;
 msg_inf		 ' \/ __ | |  | __ |_) |_) / \ '	;
 msg_inf		 ' /\    |_| _|_   |   | \ \_/ '	; echo
 ##################################Variables#############################################################
-XUIDB="/etc/x-ui/x-ui.db";domain="";UNINSTALL="x";INSTALL="n";PNLNUM=1;CFALLOW="n";CLASH=0;CUSTOMWEBSUB=0
+XUIDB="/etc/x-ui/x-ui.db";XUI_VERSION="v3.2.0";domain="";UNINSTALL="x";INSTALL="n";PNLNUM=1;CFALLOW="n";CLASH=0;CUSTOMWEBSUB=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 Pak=$(type apt &>/dev/null && echo "apt" || echo "yum")
 systemctl stop x-ui
@@ -83,6 +83,9 @@ while [ "$#" -gt 0 ]; do
     -ONLY_CF_IP_ALLOW) CFALLOW="$2"; shift 2;;
     -websub) CUSTOMWEBSUB="$2"; shift 2;;
     -clash) CLASH="$2"; shift 2;;
+    -xhttp_sni) XHTTP_SNI="$2"; shift 2;;
+    -xhttp_alpn) XHTTP_ALPN="$2"; shift 2;;
+    -xhttp_fingerprint) XHTTP_FINGERPRINT="$2"; shift 2;;
     -uninstall) UNINSTALL="$2"; shift 2;;
     *) shift 1;;
   esac
@@ -126,6 +129,9 @@ while true; do
 done
 
 domain=$(echo "$domain" 2>&1 | tr -d '[:space:]' )
+XHTTP_SNI=${XHTTP_SNI:-$domain}
+XHTTP_ALPN=${XHTTP_ALPN:-'["h2","http/1.1"]'}
+XHTTP_FINGERPRINT=${XHTTP_FINGERPRINT:-chrome}
 SubDomain=$(echo "$domain" 2>&1 | sed 's/^[^ ]* \|\..*//g')
 MainDomain=$(echo "$domain" 2>&1 | sed 's/.*\.\([^.]*\..*\)$/\1/')
 
@@ -600,12 +606,15 @@ if [[ -f $XUIDB ]]; then
       "forceTls": "tls",
       "dest": "${domain}",
       "port": 443,
+      "sni": "${XHTTP_SNI}",
+      "alpn": ${XHTTP_ALPN},
+      "fingerprint": "${XHTTP_FINGERPRINT}",
       "remark": ""
     }
   ],
   "xhttpSettings": {
     "path": "/${xhttp_path}",
-    "host": "",
+    "host": "${XHTTP_SNI}",
     "headers": {},
     "scMaxBufferedPosts": 30,
     "scMaxEachPostBytes": "1000000",
@@ -738,16 +747,8 @@ apt-get update && apt-get install -y -q wget curl tar tzdata
     
     # Download resources
     if [ $# == 0 ]; then
-        tag_version=$(curl -Ls "https://api.github.com/repos/MHSanaei/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$tag_version" ]]; then
-            echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-            tag_version=$(curl -4 -Ls "https://api.github.com/repos/MHSanaei/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-            if [[ ! -n "$tag_version" ]]; then
-                echo -e "${red}Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later${plain}"
-                exit 1
-            fi
-        fi
-        echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
+        tag_version="${XUI_VERSION}"
+        echo -e "Using x-ui version: ${tag_version}, beginning the installation..."
         wget -N -O /usr/local/x-ui-linux-$(arch).tar.gz https://github.com/MHSanaei/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
             echo -e "${red}Downloading x-ui failed, please be sure that your server can access GitHub ${plain}"
@@ -756,10 +757,10 @@ apt-get update && apt-get install -y -q wget curl tar tzdata
     else
         tag_version=$1
         tag_version_numeric=${tag_version#v}
-        min_version="2.3.5"
+        min_version="3.2.0"
         
         if [[ "$(printf '%s\n' "$min_version" "$tag_version_numeric" | sort -V | head -n1)" != "$min_version" ]]; then
-            echo -e "${red}Please use a newer version (at least v2.3.5). Exiting installation.${plain}"
+            echo -e "${red}Please use a newer version (at least v3.2.0). Exiting installation.${plain}"
             exit 1
         fi
         
