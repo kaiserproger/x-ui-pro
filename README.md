@@ -1,4 +1,4 @@
-## x-ui-pro (x-ui + nginx) modification of https://github.com/GFW4Fun/x-ui-pro for REALITY
+## x-ui-pro (x-ui + nginx) for REALITY
 - Auto Installation (lightweight)
 - Auto SSL renewal / Daily reload Nginx X-ui
 - Handle **REALITY** and **WebSocket** via **nginx**.
@@ -27,7 +27,7 @@
 ### Install X-UI-PRO
 
 ```
-bash <(wget -qO- https://github.com/mozaroc/x-ui-pro/raw/master/x-ui-pro.sh) -install yes -panel 1 -ONLY_CF_IP_ALLOW no
+bash <(wget -qO- https://github.com/kaiserproger/x-ui-pro/raw/master/x-ui-pro.sh) -install yes -panel 1 -ONLY_CF_IP_ALLOW no
 ```
 > 
 > Do not change SubDomain for renew SSL❗
@@ -35,12 +35,12 @@ bash <(wget -qO- https://github.com/mozaroc/x-ui-pro/raw/master/x-ui-pro.sh) -in
 
 **Uninstall X-UI-PRO**:x:
 ```
-sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/mozaroc/x-ui-pro/master/x-ui-pro.sh) -Uninstall yes"
+sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/kaiserproger/x-ui-pro/master/x-ui-pro.sh) -Uninstall yes"
 ```
 
 **backup panel and nginx configs**:x:
 ```
-sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/mozaroc/x-ui-pro/master/backup.sh)"
+sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/kaiserproger/x-ui-pro/master/backup.sh)"
 ```
 
 ➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖➖
@@ -48,16 +48,16 @@ sudo su -c "bash <(wget -qO- https://raw.githubusercontent.com/mozaroc/x-ui-pro/
 >
 **How to open custom web sub page?**
 >
-![](https://github.com/legiz-ru/x-ui-pro/blob/master/media/CustomWebSubHow2Open.png?raw=true)
+![](https://github.com/kaiserproger/x-ui-pro/blob/master/media/CustomWebSubHow2Open.png?raw=true)
 >
 **Main Page custom web sub**
 >
-![](https://github.com/legiz-ru/x-ui-pro/blob/master/media/CustomWebSub.png?raw=true)
+![](https://github.com/kaiserproger/x-ui-pro/blob/master/media/CustomWebSub.png?raw=true)
 >
 **sub2sing-box section on custom web sub page**
 >
-![](https://github.com/legiz-ru/x-ui-pro/blob/master/media/CustomWebSubSingBox.png?raw=true)
+![](https://github.com/kaiserproger/x-ui-pro/blob/master/media/CustomWebSubSingBox.png?raw=true)
 >
 **local instance sub2sing-box fork by legiz**
 >
-![](https://github.com/legiz-ru/x-ui-pro/blob/master/media/sub2sing.png?raw=true)
+![](https://github.com/kaiserproger/x-ui-pro/blob/master/media/sub2sing.png?raw=true)

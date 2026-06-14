@@ -741,6 +741,28 @@ config_after_install() {
             /usr/local/x-ui/x-ui migrate
 }
 
+install_xhttp_socket_cleanup() {
+    cat > /usr/local/x-ui/xhttp-socket-cleanup.sh <<'EOF'
+#!/bin/sh
+db=/etc/x-ui/x-ui.db
+[ -r "$db" ] || exit 0
+command -v sqlite3 >/dev/null 2>&1 || exit 0
+pgrep -f xray-linux >/dev/null 2>&1 && exit 0
+
+sqlite3 -noheader "$db" "SELECT listen FROM inbounds WHERE enable = 1 AND listen LIKE '/%,%';" 2>/dev/null | while IFS= read -r listen; do
+    socket=${listen%%,*}
+    case "$socket" in
+        /*) [ -S "$socket" ] && rm -f -- "$socket" ;;
+    esac
+done
+EOF
+    chmod +x /usr/local/x-ui/xhttp-socket-cleanup.sh
+
+    if [[ -f /etc/systemd/system/x-ui.service ]]; then
+        sed -i '/^ExecStartPre=\/bin\/rm -f \/dev\/shm\/uds2023\.sock$/d; /^ExecStartPre=.*xhttp-socket-cleanup\.sh$/d; /^ExecStart=/i ExecStartPre=/usr/local/x-ui/xhttp-socket-cleanup.sh' /etc/systemd/system/x-ui.service
+    fi
+}
+
 install_panel() {
 apt-get update && apt-get install -y -q wget curl tar tzdata
     cd /usr/local/
@@ -819,6 +841,7 @@ apt-get update && apt-get install -y -q wget curl tar tzdata
         rc-service x-ui start
     else
         cp -f x-ui.service.debian /etc/systemd/system/x-ui.service
+        install_xhttp_socket_cleanup
         systemctl daemon-reload
         systemctl enable x-ui
         systemctl start x-ui

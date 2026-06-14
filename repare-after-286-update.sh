@@ -18,6 +18,27 @@ sqlite3 /etc/x-ui/x-ui.db \
    WHERE json_extract(stream_settings, '$.network') = 'xhttp'
      AND json_type(stream_settings, '$.externalProxy[0]') = 'object';"
 
+cat > /usr/local/x-ui/xhttp-socket-cleanup.sh <<'EOF'
+#!/bin/sh
+db=/etc/x-ui/x-ui.db
+[ -r "$db" ] || exit 0
+command -v sqlite3 >/dev/null 2>&1 || exit 0
+pgrep -f xray-linux >/dev/null 2>&1 && exit 0
+
+sqlite3 -noheader "$db" "SELECT listen FROM inbounds WHERE enable = 1 AND listen LIKE '/%,%';" 2>/dev/null | while IFS= read -r listen; do
+    socket=${listen%%,*}
+    case "$socket" in
+        /*) [ -S "$socket" ] && rm -f -- "$socket" ;;
+    esac
+done
+EOF
+chmod +x /usr/local/x-ui/xhttp-socket-cleanup.sh
+
+if [[ -f /etc/systemd/system/x-ui.service ]]; then
+  sed -i '/^ExecStartPre=\/bin\/rm -f \/dev\/shm\/uds2023\.sock$/d; /^ExecStartPre=.*xhttp-socket-cleanup\.sh$/d; /^ExecStart=/i ExecStartPre=/usr/local/x-ui/xhttp-socket-cleanup.sh' /etc/systemd/system/x-ui.service
+  systemctl daemon-reload
+fi
+
 
 
 mkdir -p /root/cert/${domain}
