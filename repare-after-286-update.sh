@@ -12,6 +12,12 @@ XUIPATH=$(sqlite3 -list /etc/x-ui/x-ui.db 'SELECT "value" FROM settings WHERE "k
 SUBPORT=$(sqlite3 -list /etc/x-ui/x-ui.db 'SELECT "value" FROM settings WHERE "key"="subPort" LIMIT 1;' 2>&1)
 SUPPATH=$(sqlite3 -list /etc/x-ui/x-ui.db 'SELECT "value" FROM settings WHERE "key"="sub_path" LIMIT 1;' 2>&1)
 
+sqlite3 /etc/x-ui/x-ui.db \
+  "UPDATE inbounds
+   SET stream_settings = json_set(stream_settings, '$.externalProxy[0].alpn', json('[\"h2\",\"http/1.1\"]'))
+   WHERE json_extract(stream_settings, '$.network') = 'xhttp'
+     AND json_type(stream_settings, '$.externalProxy[0]') = 'object';"
+
 
 
 mkdir -p /root/cert/${domain}
@@ -114,4 +120,3 @@ END{
 x-ui restart
 nginx -t
 systemctl restart nginx
-
