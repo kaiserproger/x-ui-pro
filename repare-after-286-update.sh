@@ -31,6 +31,7 @@ sqlite3 -noheader "$db" "SELECT listen FROM inbounds WHERE enable = 1 AND listen
         /*) [ -S "$socket" ] && rm -f -- "$socket" ;;
     esac
 done
+exit 0
 EOF
 chmod +x /usr/local/x-ui/xhttp-socket-cleanup.sh
 
